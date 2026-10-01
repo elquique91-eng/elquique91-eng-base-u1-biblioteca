@@ -11,22 +11,25 @@ Aplicar reglas de negocio (sin stock, lector inactivo, un mismo libro no se pued
 Utilizar dos back‑ends de bases de datos: SQLite (local) y MySQL (remoto). La GUI está escrita con Tkinter y se adapta automáticamente al motor disponible.
 Estructura del proyecto
 library_db/                     # Directorio raíz del proyecto
-├─ library_db.py                # Wrapper de SQLite (clase LibraryDB)
-├─ mysql_library.py            # Wrapper de MySQL (clase MySQLLibrary)
-├─ app.py                      # Aplicación GUI con Tkinter
-├─ library_workbench.sql        # Script SQL para crear la base en MySQL Workbench
-├─ create_shareable_db.py       # Genera `library.db` con datos de ejemplo
-├─ library.db                   # Base de datos SQLite ya generada (shareable)
-└─ README.md                   # (Este archivo)
+library_db.py                # Wrapper de SQLite (clase LibraryDB)
+ mysql_library.py            # Wrapper de MySQL (clase MySQLLibrary)
+ app.py                      # Aplicación GUI con Tkinter
+ library_workbench.sql        # Script SQL para crear la base en MySQL Workbench
+ create_shareable_db.py       # Genera `library.db` con datos de ejemplo
+ library.db                   # Base de datos SQLite ya generada (shareable)
+README.md                   # (Este archivo)
 Código Python
 library_db.py (SQLite)
 Clase LibraryDB que encapsula todas las operaciones contra SQLite.
 Métodos principales:
+
 add_book, get_book, list_books, update_book, deactivate_book
 add_reader, get_reader, list_readers, update_reader, deactivate_reader
 borrow_book, return_book
 list_borrows, get_borrows_with_details, get_overdue_borrows
+
 Validaciones de reglas de negocio (stock, lector activo, préstamo duplicado, etc.).
+
 Usa tipo DATE de SQLite; los parámetros de fecha se pasan como cadena YYYY‑MM‑DD.
 mysql_library.py (MySQL)
 Clase MySQLLibrary con la misma API que LibraryDB pero usando MySQL.
