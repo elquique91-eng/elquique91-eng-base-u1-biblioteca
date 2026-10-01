@@ -114,3 +114,6 @@ No se permite eliminar un libro o lector que tenga préstamos activos; la acció
 Las fechas se ingresan como YYYY‑MM‑DD. No se maneja zona horaria ni hora.
 En SQLite, el archivo library.db se encuentra en la misma carpeta que app.py. Puedes copiarlo a otro equipo; la aplicación seguirá funcionando sin cambios.
 En MySQL, los cambios persisten en el servidor configurado; asegúrate de respaldar la base si la vas a mover.
+<img width="377" height="305" alt="imagen" src="https://github.com/user-attachments/assets/c3dcebb8-c6a1-4c9e-9223-d787f6454044" />
+<img width="1167" height="759" alt="imagen" src="https://github.com/user-attachments/assets/7e392802-3385-45a7-9b36-dd03bd14ebd5" />
+
