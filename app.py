@@ -15,6 +15,9 @@ Allows users to:
 
 import os
 import sys
+import hashlib
+import secrets
+import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from datetime import date, datetime, timedelta
@@ -32,12 +35,188 @@ except ImportError:
     LibraryDB = None
 
 
+# =============================================================================
+# USER AUTHENTICATION (hashed passwords stored in users.db)
+# =============================================================================
+# Users are stored in a local SQLite file `users.db` next to app.py.
+# Passwords are hashed with SHA-256 + a random per-user salt (hex, 32 bytes).
+# No plain-text passwords are ever stored.
+# =============================================================================
+
+USERS_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+
+
+class UserDB:
+    """Manages user accounts with salted SHA-256 password hashing."""
+
+    def __init__(self, db_path: str = USERS_DB_PATH):
+        self.db_path = db_path
+        self._init()
+
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init(self):
+        with self._connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY COLLATE NOCASE,
+                    salt     TEXT NOT NULL,
+                    pw_hash  TEXT NOT NULL
+                )
+            """)
+            conn.commit()
+
+    @staticmethod
+    def _hash(password: str, salt: str) -> str:
+        """SHA-256 hash of password + salt."""
+        return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+    def user_exists(self, username: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        return row is not None
+
+    def register(self, username: str, password: str) -> None:
+        """Register a new user with a fresh random salt."""
+        salt = secrets.token_hex(32)
+        pw_hash = self._hash(password, salt)
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO users (username, salt, pw_hash) VALUES (?, ?, ?)",
+                (username, salt, pw_hash)
+            )
+            conn.commit()
+
+    def verify(self, username: str, password: str) -> bool:
+        """Return True if username + password match the stored hash."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT salt, pw_hash FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        if not row:
+            return False
+        return self._hash(password, row["salt"]) == row["pw_hash"]
+
+
+class LoginWindow(tk.Toplevel):
+    """
+    Login / Register window.
+    - New username  → user is registered automatically and let in.
+    - Existing username → password must match the stored hash.
+    Sets self.master.login_success = True on success then destroys itself.
+    """
+
+    def __init__(self, master, user_db: UserDB):
+        super().__init__(master)
+        self.master = master
+        self.user_db = user_db
+        self.title("Inicio de sesión – Biblioteca")
+        self.resizable(False, False)
+        self.grab_set()                # modal
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+        # Center the window
+        self.update_idletasks()
+        w, h = 360, 260
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        self.geometry(f"{w}x{h}+{(sw - w)//2}+{(sh - h)//2}")
+
+        self._build_ui()
+
+    def _build_ui(self):
+        pad = {"padx": 20, "pady": 6}
+
+        header = tk.Label(
+            self, text="📚 Sistema de Biblioteca",
+            font=("Segoe UI", 13, "bold"), fg="#0066cc"
+        )
+        header.pack(pady=(18, 4))
+
+        tk.Label(self, text="Usuario:", font=("Segoe UI", 10)).pack(**pad, anchor="w")
+        self.ent_user = ttk.Entry(self, width=34, font=("Segoe UI", 10))
+        self.ent_user.pack(padx=20)
+        self.ent_user.focus_set()
+
+        tk.Label(self, text="Contraseña:", font=("Segoe UI", 10)).pack(**pad, anchor="w")
+        self.ent_pw = ttk.Entry(self, width=34, show="*", font=("Segoe UI", 10))
+        self.ent_pw.pack(padx=20)
+        self.ent_pw.bind("<Return>", lambda e: self._attempt_login())
+
+        self.lbl_msg = tk.Label(self, text="", font=("Segoe UI", 9), fg="#cc0000")
+        self.lbl_msg.pack(pady=(6, 0))
+
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Entrar", width=14, command=self._attempt_login).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="Cancelar", width=10, command=self._on_cancel).pack(side=tk.LEFT, padx=6)
+
+    def _attempt_login(self):
+        username = self.ent_user.get().strip()
+        password = self.ent_pw.get()
+
+        if not username:
+            self.lbl_msg.config(text="El nombre de usuario no puede estar vacío.")
+            return
+        if not password:
+            self.lbl_msg.config(text="La contraseña no puede estar vacía.")
+            return
+
+        if not self.user_db.user_exists(username):
+            # New user – register and let them in
+            self.user_db.register(username, password)
+            messagebox.showinfo(
+                "Bienvenido",
+                f"Usuario '{username}' registrado.\n¡Bienvenido al sistema!",
+                parent=self
+            )
+            self.master.login_success = True
+            self.master.logged_user = username
+            self.destroy()
+        else:
+            # Existing user – verify password
+            if self.user_db.verify(username, password):
+                self.master.login_success = True
+                self.master.logged_user = username
+                self.destroy()
+            else:
+                self.lbl_msg.config(text="Contraseña incorrecta. Intenta de nuevo.")
+                self.ent_pw.delete(0, tk.END)
+
+    def _on_cancel(self):
+        self.master.login_success = False
+        self.destroy()
+
+
 class LibraryApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Library Management System - Database Manager")
         self.geometry("1180x760")
         self.minsize(980, 640)
+
+        # Hide main window while login is pending
+        self.withdraw()
+
+        # Login gate
+        self.login_success = False
+        self.logged_user = ""
+        user_db = UserDB()
+        login_win = LoginWindow(self, user_db)
+        self.wait_window(login_win)   # block until LoginWindow is destroyed
+
+        if not self.login_success:
+            self.destroy()
+            return
+
+        # Show main window after successful login
+        self.deiconify()
+        self.title(f"Library Management System  –  Usuario: {self.logged_user}")
 
         # Style configuration
         self._setup_styles()
@@ -120,9 +299,6 @@ class LibraryApp(tk.Tk):
             text=status_text,
             font=("Segoe UI", 9, "bold"),
             foreground=status_color
-        )
-            font=("Segoe UI", 9, "bold"),
-            foreground="#008000" if self.db else "#cc0000"
         )
         self.lbl_status.pack(side=tk.LEFT, padx=5)
 
